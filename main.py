@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+import datetime
 import os
 import re
 from pathlib import Path
@@ -7,6 +9,7 @@ import openpyxl
 import logging
 
 from openpyxl import Workbook
+from openpyxl.cell import Cell
 from openpyxl.worksheet.worksheet import Worksheet
 
 logging.basicConfig(
@@ -26,7 +29,7 @@ CELL_POS_ACCOUNT_DST = 0
 
 CELL_POS_AMOUNT = 17
 
-DATE_PATTERN = re.compile(r'[0-9]{2}\.[0-9]{2}\.[0-9]{4}')
+DATE_PATTERN = re.compile(r'(?P<day>[0-9]{2})\.(?P<month>[0-9]{2})\.(?P<year>[0-9]{4})')
 
 
 def copy_rows(input_ws: Worksheet, output_ws: Worksheet):
@@ -57,10 +60,16 @@ def copy_rows(input_ws: Worksheet, output_ws: Worksheet):
         if values[cell_marker_pos] == CELL_MARKER:
             account = values[cell_account_src_pos]
 
+        cell_date_match = DATE_PATTERN.match(cell_date) if cell_date else None
+
         # If we have a cell date
-        if cell_date and DATE_PATTERN.match(cell_date):
+        if cell_date_match:
             # Rewriting the date
-            values[CELL_POS_DATE] = cell_date.replace('.', '/')
+            values[CELL_POS_DATE] = datetime.datetime(
+                int(cell_date_match.group('year')),
+                int(cell_date_match.group('month')),
+                int(cell_date_match.group('day')),
+            )
             values[CELL_POS_ACCOUNT_DST] = account
 
             # Rewriting the amount
@@ -68,7 +77,10 @@ def copy_rows(input_ws: Worksheet, output_ws: Worksheet):
             if type(amount) is str:
                 values[CELL_POS_AMOUNT] = float(amount.replace(' ', '').replace(',', ''))
 
-            output_ws.append(values)
+            cells = [Cell(output_ws, value=v) for v in values]
+            cells[CELL_POS_DATE].number_format = 'dd/mm/yyyy'
+
+            output_ws.append(cells)
             nb_rows_copied += 1
             if nb_rows_copied % 1000 == 0:
                 logging.info("  Copied %d rows on %d input rows ...", nb_rows_copied, nb_rows_read)
